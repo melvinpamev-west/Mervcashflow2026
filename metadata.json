@@ -1,0 +1,6 @@
+{
+  "name": "Alpen — Manajemen Keuangan Pribadi",
+  "description": "Aplikasi manajemen keuangan pribadi dengan estetika alpine banking gelap, pelacakan pengeluaran, anggaran, dan analisis arus kas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

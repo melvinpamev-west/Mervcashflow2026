@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+:root {
+  /* Mercury Alpine Banking Design Tokens */
+  --color-onyx-canvas: #171721;
+  --color-graphite-card: #1e1e2a;
+  --color-obsidian-button: #272735;
+  --color-slate-border: #70707d;
+  --color-mist-border: #e2e3ed;
+  --color-ash-text: #c3c3cc;
+  --color-ivory-text: #ededf3;
+  --color-cobalt: #5266eb;
+  --color-pure-white: #ffffff;
+
+  --font-arcadia: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-arcadiadisplay: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background-color: #171721;
+  color: #ededf3;
+  font-family: var(--font-arcadia);
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbars matching dark alpine aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #171721;
+}
+::-webkit-scrollbar-thumb {
+  background: #272735;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #70707d;
+}
+
+/* Alpine Card flat elevation without shadows */
+.graphite-card {
+  background-color: #1e1e2a;
+  border-radius: 12px;
+  padding: 32px;
+  border: none;
+  box-shadow: none;
+}
+
+/* Mercury Pill Button & Input shapes */
+.pill-button-primary {
+  background-color: #5266eb;
+  color: #ffffff;
+  border-radius: 32px;
+  font-weight: 480;
+  font-size: 15px;
+  padding: 10px 24px;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pill-button-primary:hover {
+  opacity: 0.92;
+}
+.pill-button-primary:active {
+  transform: scale(0.98);
+}
+
+.pill-button-ghost {
+  background-color: transparent;
+  color: #ededf3;
+  border: 1px solid #ededf3;
+  border-radius: 40px;
+  font-size: 15px;
+  padding: 8px 20px;
+  font-weight: 400;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pill-button-ghost:hover {
+  background-color: rgba(237, 237, 243, 0.08);
+}
+
+.pill-button-secondary {
+  background-color: #272735;
+  color: #ededf3;
+  border-radius: 32px;
+  font-size: 14px;
+  padding: 8px 18px;
+  font-weight: 450;
+  transition: all 0.15s ease;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pill-button-secondary:hover {
+  background-color: #323244;
+}
+
+.pill-nav-item {
+  background-color: transparent;
+  color: #c3c3cc;
+  border-radius: 40px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 450;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.pill-nav-item:hover {
+  color: #ededf3;
+  background-color: rgba(255, 255, 255, 0.04);
+}
+.pill-nav-item.active {
+  color: #ededf3;
+  background-color: #1e1e2a;
+}
