@@ -112,9 +112,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <section className="relative pt-32 pb-24 md:pt-40 md:pb-32 overflow-hidden border-b border-[#272735]/60 flex items-center justify-center">
         {/* Background Image with Dark Blue-Hour Tint */}
         <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat z-0 opacity-40 scale-105"
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat z-0 opacity-80 scale-105"
           style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=2070&auto=format&fit=crop')`,
+            backgroundImage: `url('/images/mervin.jpg')`,
           }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-[#171721]/60 via-[#171721]/90 to-[#171721] z-0" />
@@ -133,7 +133,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </h1>
 
           <p className="text-[16px] sm:text-[18px] text-[#ededf3]/85 font-[400] leading-relaxed max-w-[620px] mb-10">
-            Kelola multi-rekening bank, e-wallet, dan arus kas harian Anda secara mandiri.
+            Kelola multi-rekening bank, e-wallet, dan arus kas harian Mervin Inas secara mandiri.
             Tersimpan aman di cloud Firebase untuk penggunaan permanen, lengkap dengan laporan PDF eksekutif siap cetak.
           </p>
 
@@ -144,7 +144,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 onClick={onEnterDashboard}
                 className="pill-button-primary text-[15px] py-3.5 px-8 flex items-center gap-2 shadow-lg shadow-[#5266eb]/30"
               >
-                <span>Lanjutkan ke Dashboard Anda</span>
+                <span>Lanjutkan ke Dashboard Anda Tuan Mervin Inas</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             ) : (

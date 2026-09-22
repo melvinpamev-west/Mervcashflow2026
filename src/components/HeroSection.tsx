@@ -42,7 +42,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat z-0 transform scale-105 transition-transform duration-1000"
         style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=2070&auto=format&fit=crop')`,
+          backgroundImage:  `url('/images/mervin.jpg')`,
         }}
       >
         {/* Subtle dark overlay from design tokens: #171721 */}
@@ -58,7 +58,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         {/* Subtitle / Eyebrow in arcadia weight 400 */}
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[40px] bg-[#1e1e2a]/70 border border-[#272735] text-[#c3c3cc] text-[13px] mb-6">
           <span className="w-1.5 h-1.5 rounded-full bg-[#5266eb]" />
-          <span>Kekayaan Bersih Terkini</span>
+          <span>Kekayaan Bersih Terkini Tuan Mervin Inas</span>
         </div>
 
         {/* Display Typography (arcadiaDisplay 65px equivalent, weight 480) */}
