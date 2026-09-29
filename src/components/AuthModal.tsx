@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { X, Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, CheckCircle2, AlertCircle, Copy, Check, ExternalLink } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -24,19 +24,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDomainError, setIsDomainError] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
 
   const getIndonesianErrorMessage = (err: any): string => {
     const raw = typeof err === 'string' ? err : `${err?.code || ''} ${err?.message || ''}`;
     const errCode = raw.toLowerCase();
 
+    if (errCode.includes('auth/unauthorized-domain')) {
+      setIsDomainError(true);
+      return 'Domain web ini belum didaftarkan di Firebase Console. Buka Firebase Console > Authentication > Settings > Authorized domains, lalu tambahkan domain ini.';
+    }
+    setIsDomainError(false);
+
     if (errCode.includes('auth/operation-not-allowed')) {
       return 'Metode masuk (Email/Password atau Google) belum diaktifkan di Firebase Console. Buka menu Authentication > Sign-in method di console.firebase.google.com, lalu aktifkan (Enable) Email/Password atau Google.';
-    }
-    if (errCode.includes('auth/unauthorized-domain')) {
-      return 'Domain web ini belum didaftarkan di Firebase Console. Buka Firebase Console > Authentication > Settings > Authorized domains, lalu tambahkan domain ini.';
     }
     if (errCode.includes('auth/invalid-credential') || errCode.includes('auth/wrong-password') || errCode.includes('auth/user-not-found')) {
       return 'Email atau kata sandi salah. Silakan periksa kembali.';
@@ -181,9 +188,65 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Error Notification */}
         {error && (
-          <div className="mb-5 p-3 rounded-[12px] bg-[#ef4444]/10 border border-[#ef4444]/30 flex items-start gap-2.5 text-xs text-[#ef4444]">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
+          <div className="mb-5 space-y-3">
+            <div className="p-3 rounded-[12px] bg-[#ef4444]/10 border border-[#ef4444]/30 flex items-start gap-2.5 text-xs text-[#ef4444]">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="leading-relaxed">{error}</span>
+            </div>
+
+            {isDomainError && currentDomain && (
+              <div className="p-3.5 rounded-[14px] bg-[#171721] border border-[#3e3e56] text-xs space-y-2.5">
+                <div className="flex items-center justify-between text-[#c3c3cc]">
+                  <span className="text-[11px] font-[500] uppercase tracking-wider text-[#a0a0b2]">
+                    Domain yang Perlu Didaftarkan:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(currentDomain);
+                      setCopiedDomain(true);
+                      setTimeout(() => setCopiedDomain(false), 2500);
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#5266eb]/20 text-[#818cf8] hover:bg-[#5266eb]/30 transition-colors text-[11px] font-[500]"
+                  >
+                    {copiedDomain ? (
+                      <>
+                        <Check className="w-3 h-3 text-[#34d399]" />
+                        <span className="text-[#34d399]">Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Salin Domain</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="p-2 rounded-[8px] bg-[#111119] border border-[#272735] font-mono text-[11px] text-[#ededf3] break-all select-all">
+                  {currentDomain}
+                </div>
+
+                <div className="text-[11px] text-[#a0a0b2] space-y-1">
+                  <p className="font-[500] text-[#ededf3]">Cara menambahkan di Firebase Console:</p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-[#c3c3cc]">
+                    <li>Buka Firebase Console &rarr; menu <strong>Authentication</strong>.</li>
+                    <li>Pilih tab <strong>Settings</strong> &rarr; <strong>Authorized domains</strong>.</li>
+                    <li>Klik <strong>Add domain</strong>, tempel domain di atas, lalu <strong>Save</strong>.</li>
+                  </ol>
+                </div>
+
+                <a
+                  href="https://console.firebase.google.com/"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center gap-1.5 text-[11px] text-[#5266eb] hover:text-[#818cf8] font-[500] pt-1"
+                >
+                  <span>Buka Firebase Console sekarang</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
           </div>
         )}
 

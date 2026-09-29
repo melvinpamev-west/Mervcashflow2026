@@ -1,38 +1,51 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  ShieldCheck,
   FileDown,
   TrendingUp,
-  Wallet,
   ArrowRight,
   Layers,
   Lock,
   PieChart,
   CheckCircle2,
-  Sparkles,
-  ExternalLink,
+  Sun,
+  Moon,
 } from 'lucide-react';
-import { Currency } from '../types';
-import { formatCurrency } from '../utils/formatters';
+import { AppTheme, Currency } from '../types';
 
 interface LandingPageProps {
   onOpenAuth: (tab: 'login' | 'register') => void;
   onEnterDashboard: () => void;
   onDownloadSamplePdf: () => void;
   currency: Currency;
+  theme?: AppTheme;
+  onToggleTheme?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenAuth,
   onEnterDashboard,
   onDownloadSamplePdf,
-  currency,
+  theme = 'dark',
+  onToggleTheme,
 }) => {
   const { currentUser, logout } = useAuth();
 
+  const handleAnchorClick = (e: React.MouseEvent<HTMLAnchorElement>, sectionId: string) => {
+    e.preventDefault();
+    window.history.replaceState(null, '', `#${sectionId}`);
+    const el = document.getElementById(sectionId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#171721] text-[#ededf3] flex flex-col selection:bg-[#5266eb] selection:text-white">
+    <div
+      className={`min-h-screen bg-[#171721] text-[#ededf3] flex flex-col selection:bg-[#5266eb] selection:text-white ${
+        theme === 'light' ? 'theme-light' : ''
+      }`}
+    >
       {/* Top Navbar */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-[#171721]/90 backdrop-blur-md border-b border-[#272735]/60 py-4 transition-all">
         <div className="max-w-[1200px] mx-auto px-6 flex items-center justify-between">
@@ -48,26 +61,58 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 MERVFLOW MONEY
               </span>
               <span className="text-[10px] text-[#c3c3cc] tracking-wider uppercase -mt-0.5">
-                Alpen Financial Architecture
+                Finance Assistant &amp; Liquid Glass UI
               </span>
             </div>
           </div>
 
-          {/* Center Navigation Links (Desktop) */}
+          {/* Center Navigation Links (Desktop) - Automatically scroll to section ID */}
           <nav className="hidden md:flex items-center gap-6 text-xs font-[480] text-[#c3c3cc]">
-            <a href="#fitur" className="hover:text-[#ededf3] transition-colors">
+            <a
+              href="#fitur"
+              onClick={(e) => handleAnchorClick(e, 'fitur')}
+              className="hover:text-[#ededf3] transition-colors cursor-pointer"
+            >
               Fitur Unggulan
             </a>
-            <a href="#keamanan" className="hover:text-[#ededf3] transition-colors">
+            <a
+              href="#keamanan"
+              onClick={(e) => handleAnchorClick(e, 'keamanan')}
+              className="hover:text-[#ededf3] transition-colors cursor-pointer"
+            >
               Keamanan Firebase
             </a>
-            <a href="#laporan-pdf" className="hover:text-[#ededf3] transition-colors">
+            <a
+              href="#laporan-pdf"
+              onClick={(e) => handleAnchorClick(e, 'laporan-pdf')}
+              className="hover:text-[#ededf3] transition-colors cursor-pointer"
+            >
               Laporan PDF
             </a>
           </nav>
 
           {/* Right Action Buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {onToggleTheme && (
+              <button
+                onClick={onToggleTheme}
+                className="pill-button-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 border border-[#272735] cursor-pointer"
+                title={theme === 'dark' ? 'Tampilan Terang' : 'Tampilan Gelap'}
+              >
+                {theme === 'dark' ? (
+                  <>
+                    <Sun className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="hidden sm:inline">Terang</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-3.5 h-3.5 text-[#5266eb]" />
+                    <span className="hidden sm:inline">Gelap</span>
+                  </>
+                )}
+              </button>
+            )}
+
             {currentUser ? (
               <div className="flex items-center gap-3">
                 <span className="hidden sm:inline text-xs text-[#c3c3cc] bg-[#1e1e2a] px-3 py-1.5 rounded-[32px] border border-[#272735]">
@@ -140,27 +185,41 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           {/* CTA Buttons */}
           <div className="flex flex-wrap items-center justify-center gap-4 mb-14">
             {currentUser ? (
-              <button
-                onClick={onEnterDashboard}
-                className="pill-button-primary text-[15px] py-3.5 px-8 flex items-center gap-2 shadow-lg shadow-[#5266eb]/30"
-              >
-                <span>Lanjutkan ke Dashboard Anda Tuan Mervin Inas</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            ) : (
               <>
                 <button
-                  onClick={() => onOpenAuth('register')}
-                  className="pill-button-primary text-[15px] py-3.5 px-8 flex items-center gap-2 shadow-lg shadow-[#5266eb]/30"
+                  onClick={onEnterDashboard}
+                  className="pill-button-primary text-[15px] py-3.5 px-8 flex items-center gap-2 shadow-lg shadow-[#5266eb]/30 cursor-pointer"
                 >
-                  <span>Mulai Sekarang — Buat Akun</span>
+                  <span>Buka Dashboard Manajemen Keuangan &amp; RAB</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => onOpenAuth('login')}
-                  className="pill-button-ghost text-[15px] py-3.5 px-7"
+                  className="pill-button-ghost text-[15px] py-3.5 px-6 cursor-pointer"
                 >
-                  Masuk ke Akun
+                  Form Login / Ganti Akun
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => onOpenAuth('login')}
+                  className="pill-button-primary text-[15px] py-3.5 px-8 flex items-center gap-2 shadow-lg shadow-[#5266eb]/30 cursor-pointer"
+                >
+                  <span>Masuk ke Akun (Login)</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onOpenAuth('register')}
+                  className="pill-button-ghost text-[15px] py-3.5 px-7 cursor-pointer"
+                >
+                  Daftar Akun Baru
+                </button>
+                <button
+                  onClick={onEnterDashboard}
+                  className="pill-button-secondary text-[14px] py-3 px-5 border border-[#5266eb]/50 cursor-pointer"
+                >
+                  Lihat Dashboard Keuangan
                 </button>
               </>
             )}

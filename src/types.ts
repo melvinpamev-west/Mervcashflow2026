@@ -39,7 +39,12 @@ export interface Account {
   institution: string;
   balance: number;
   accountNumber?: string;
+  isAutoSync?: boolean;
+  lastSyncedAt?: string;
 }
+
+export type PdfExportScope = 'keuangan' | 'rab' | 'rekening' | 'transaksi' | 'anggaran';
+export type AppTheme = 'dark' | 'light';
 
 export interface Budget {
   id: string;
@@ -57,4 +62,38 @@ export interface SavingsGoal {
 
 export type Currency = 'IDR' | 'USD';
 
-export type ActiveTab = 'ringkasan' | 'transaksi' | 'rekening' | 'anggaran' | 'analisis';
+export type ActiveTab = 'ringkasan' | 'transaksi' | 'rekening' | 'anggaran' | 'rab' | 'analisis';
+
+export type RabProjectStatus = 'perencanaan' | 'berjalan' | 'selesai';
+export type RabItemStatus = 'rencana' | 'proses' | 'selesai';
+export type RabItemPriority = 'utama' | 'menengah' | 'opsional';
+
+export interface RabItem {
+  id: string;
+  name: string;
+  category: string;
+  volume: number;
+  unit: string;
+  unitPrice: number;
+  totalEstimated: number;
+  actualCost: number;
+  status: RabItemStatus;
+  priority: RabItemPriority;
+  notes?: string;
+}
+
+export interface RabProject {
+  id: string;
+  title: string;
+  projectType: string;
+  description: string;
+  allocatedBudget: number;
+  contingencyPercent: number;
+  status: RabProjectStatus;
+  startDate: string;
+  targetDate?: string;
+  createdAt: string;
+  updatedAt: string;
+  items: RabItem[];
+}
+

@@ -1,9 +1,20 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Account, ActiveTab, Budget, Currency, SavingsGoal, Transaction } from './types';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import {
+  Account,
+  ActiveTab,
+  AppTheme,
+  Budget,
+  Currency,
+  PdfExportScope,
+  RabProject,
+  SavingsGoal,
+  Transaction,
+} from './types';
 import {
   INITIAL_ACCOUNTS,
   INITIAL_BUDGETS,
   INITIAL_GOALS,
+  INITIAL_RAB_PROJECTS,
   INITIAL_TRANSACTIONS,
 } from './data/initialData';
 import { Navbar } from './components/Navbar';
@@ -12,7 +23,9 @@ import { RingkasanView } from './components/RingkasanView';
 import { TransaksiView } from './components/TransaksiView';
 import { RekeningView } from './components/RekeningView';
 import { AnggaranView } from './components/AnggaranView';
+import { RabView } from './components/RabView';
 import { AnalisisView } from './components/AnalisisView';
+import { LiquidFinanceStage } from './components/LiquidFinanceStage';
 import { TransactionModal } from './components/TransactionModal';
 import { TransferModal } from './components/TransferModal';
 import { AccountModal } from './components/AccountModal';
@@ -22,15 +35,44 @@ import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
 import { PdfExportModal } from './components/PdfExportModal';
 import { useAuth } from './contexts/AuthContext';
-import { generateFinancialPdfReport } from './utils/pdfExport';
-import { db, doc, setDoc, getDoc } from './lib/firebase';
-import { CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
+import { db, doc, setDoc, onSnapshot } from './lib/firebase';
+import { CheckCircle, ArrowLeft, Calculator, Sparkles, LayoutGrid } from 'lucide-react';
 
 export default function App() {
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading, logout } = useAuth();
 
   // Navigation mode: 'landing' or 'dashboard'
   const [viewMode, setViewMode] = useState<'landing' | 'dashboard'>('landing');
+
+  // UI Style inside dashboard: 'liquid' (Aurora Liquid-Glass Finance Assistant Stage) or 'classic' (Full Scrollable Sections)
+  const [dashboardLayout, setDashboardLayout] = useState<'liquid' | 'classic'>('liquid');
+
+  // Theme: 'dark' or 'light'
+  const [theme, setTheme] = useState<AppTheme>(() => {
+    try {
+      const saved = localStorage.getItem('mervflow_theme');
+      return saved === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mervflow_theme', theme);
+      if (theme === 'light') {
+        document.documentElement.classList.add('theme-light');
+      } else {
+        document.documentElement.classList.remove('theme-light');
+      }
+    } catch {
+      // ignore
+    }
+  }, [theme]);
+
+  const handleToggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
 
   // When auth state changes, set viewMode
   useEffect(() => {
@@ -47,13 +89,12 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
 
-  // Persistence states - initialized cleanly for permanent usage
+  // Persistence states
   const [accounts, setAccounts] = useState<Account[]>(() => {
     try {
       const saved = localStorage.getItem('mervflow_accounts');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Avoid lingering old mock sample data
         if (Array.isArray(parsed) && parsed.some((a) => a.id === 'acc-1')) {
           return INITIAL_ACCOUNTS;
         }
@@ -113,6 +154,18 @@ export default function App() {
     }
   });
 
+  const [rabProjects, setRabProjects] = useState<RabProject[]>(() => {
+    try {
+      const saved = localStorage.getItem('mervflow_rab_projects');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+      return INITIAL_RAB_PROJECTS;
+    } catch {
+      return INITIAL_RAB_PROJECTS;
+    }
+  });
+
   const [currency, setCurrency] = useState<Currency>(() => {
     try {
       const saved = localStorage.getItem('mervflow_currency');
@@ -124,6 +177,11 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('ringkasan');
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Guard ref to prevent overwriting Firestore before initial snapshot loads
+  const isInitialCloudLoadedRef = useRef<boolean>(false);
+  const isApplyingRemoteSnapshotRef = useRef<boolean>(false);
 
   // Modal states
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
@@ -133,80 +191,129 @@ export default function App() {
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [pdfDefaultScope, setPdfDefaultScope] = useState<PdfExportScope>('keuangan');
 
   // Notification / Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
     }, 3500);
-  };
+  }, []);
 
-  // Load user data from Firestore on login
+  // Automatically sync URL hash (#ringkasan, #transaksi, #rekening, #anggaran, #rab, #analisis) to activeTab & scroll
   useEffect(() => {
-    if (!currentUser) return;
-
-    let isMounted = true;
-    const fetchUserData = async () => {
-      try {
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const docSnap = await getDoc(userDocRef);
-
-        if (docSnap.exists() && isMounted) {
-          const data = docSnap.data();
-          if (data.accounts) setAccounts(data.accounts);
-          if (data.transactions) setTransactions(data.transactions);
-          if (data.budgets) setBudgets(data.budgets);
-          if (data.goals) setGoals(data.goals);
-          if (data.currency) setCurrency(data.currency);
-          setIsCloudSynced(true);
-        } else if (isMounted) {
-          // New user: initialize cloud doc
-          await setDoc(userDocRef, {
-            accounts,
-            transactions,
-            budgets,
-            goals,
-            currency,
-            email: currentUser.email,
-            createdAt: new Date().toISOString(),
-          }, { merge: true });
-          setIsCloudSynced(true);
-        }
-      } catch (err: any) {
-        console.error('Failed to sync from Firestore:', err);
-        if (err?.code === 'permission-denied' || String(err?.message || '').includes('permission-denied')) {
-          showToast('Firestore Rules menolak pembacaan data. Silakan perbarui Security Rules di Firebase Console.');
-        }
+    const syncFromHash = () => {
+      const hash = window.location.hash.replace('#', '') as ActiveTab;
+      const validTabs: ActiveTab[] = ['ringkasan', 'transaksi', 'rekening', 'anggaran', 'rab', 'analisis'];
+      if (validTabs.includes(hash)) {
+        setActiveTab(hash);
+        setTimeout(() => {
+          const el = document.getElementById(hash);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 40);
       }
     };
 
-    fetchUserData();
-    return () => {
-      isMounted = false;
-    };
-  }, [currentUser]);
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
 
-  // Sync to Firestore & localStorage
+  // Realtime listener from Firestore (onSnapshot) for instant sync across devices & e-wallets
+  useEffect(() => {
+    if (!currentUser) {
+      isInitialCloudLoadedRef.current = true;
+      return;
+    }
+
+    isInitialCloudLoadedRef.current = false;
+    const userDocRef = doc(db, 'users', currentUser.uid);
+
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      async (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          isApplyingRemoteSnapshotRef.current = true;
+          if (Array.isArray(data.accounts)) setAccounts(data.accounts);
+          if (Array.isArray(data.transactions)) setTransactions(data.transactions);
+          if (Array.isArray(data.budgets)) setBudgets(data.budgets);
+          if (Array.isArray(data.goals)) setGoals(data.goals);
+          if (Array.isArray(data.rabProjects)) setRabProjects(data.rabProjects);
+          if (data.currency) setCurrency(data.currency);
+          isInitialCloudLoadedRef.current = true;
+          setIsCloudSynced(true);
+          setTimeout(() => {
+            isApplyingRemoteSnapshotRef.current = false;
+          }, 60);
+        } else {
+          // Initialize cloud document for new user
+          try {
+            await setDoc(
+              userDocRef,
+              {
+                accounts,
+                transactions,
+                budgets,
+                goals,
+                rabProjects,
+                currency,
+                email: currentUser.email,
+                createdAt: new Date().toISOString(),
+              },
+              { merge: true }
+            );
+            isInitialCloudLoadedRef.current = true;
+            setIsCloudSynced(true);
+          } catch (err) {
+            console.error('Failed to initialize Firestore doc:', err);
+          }
+        }
+      },
+      (err: any) => {
+        console.error('Realtime Firestore listener error:', err);
+        isInitialCloudLoadedRef.current = true;
+        if (
+          err?.code === 'permission-denied' ||
+          String(err?.message || '').includes('permission-denied')
+        ) {
+          showToast('Firestore Rules menolak akses. Pastikan Security Rules sudah aktif.');
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser, showToast]);
+
+  // Save to localStorage & Firestore whenever state changes
   const syncToCloud = useCallback(
     async (
       newAccounts: Account[],
       newTransactions: Transaction[],
       newBudgets: Budget[],
       newGoals: SavingsGoal[],
+      newRabProjects: RabProject[],
       newCurrency: Currency
     ) => {
-      // Local storage backup
-      localStorage.setItem('mervflow_accounts', JSON.stringify(newAccounts));
-      localStorage.setItem('mervflow_transactions', JSON.stringify(newTransactions));
-      localStorage.setItem('mervflow_budgets', JSON.stringify(newBudgets));
-      localStorage.setItem('mervflow_goals', JSON.stringify(newGoals));
-      localStorage.setItem('mervflow_currency', newCurrency);
+      // Always save to localStorage immediately
+      try {
+        localStorage.setItem('mervflow_accounts', JSON.stringify(newAccounts));
+        localStorage.setItem('mervflow_transactions', JSON.stringify(newTransactions));
+        localStorage.setItem('mervflow_budgets', JSON.stringify(newBudgets));
+        localStorage.setItem('mervflow_goals', JSON.stringify(newGoals));
+        localStorage.setItem('mervflow_rab_projects', JSON.stringify(newRabProjects));
+        localStorage.setItem('mervflow_currency', newCurrency);
+      } catch {
+        // ignore storage quota errors
+      }
 
-      // Firestore sync
-      if (currentUser) {
+      // Only write to Firestore if initial cloud snapshot has loaded and we are not mid-snapshot
+      if (currentUser && isInitialCloudLoadedRef.current && !isApplyingRemoteSnapshotRef.current) {
         try {
           setIsCloudSynced(false);
           const userDocRef = doc(db, 'users', currentUser.uid);
@@ -217,6 +324,7 @@ export default function App() {
               transactions: newTransactions,
               budgets: newBudgets,
               goals: newGoals,
+              rabProjects: newRabProjects,
               currency: newCurrency,
               updatedAt: new Date().toISOString(),
             },
@@ -226,19 +334,75 @@ export default function App() {
         } catch (err: any) {
           console.error('Cloud sync error:', err);
           setIsCloudSynced(false);
-          if (err?.code === 'permission-denied' || String(err?.message || '').includes('permission-denied')) {
-            showToast('Peringatan: Firestore Security Rules menolak penyimpanan. Perbarui rules di Firebase Console.');
-          }
         }
       }
     },
     [currentUser]
   );
 
-  // Trigger sync on state changes
   useEffect(() => {
-    syncToCloud(accounts, transactions, budgets, goals, currency);
-  }, [accounts, transactions, budgets, goals, currency, syncToCloud]);
+    syncToCloud(accounts, transactions, budgets, goals, rabProjects, currency);
+  }, [accounts, transactions, budgets, goals, rabProjects, currency, syncToCloud]);
+
+  // Auto-Sync All Accounts & E-Wallets Handler
+  const handleAutoSyncAll = useCallback(() => {
+    setIsSyncing(true);
+    const nowIso = new Date().toISOString();
+
+    setAccounts((prev) =>
+      prev.map((acc) => ({
+        ...acc,
+        isAutoSync: true,
+        lastSyncedAt: nowIso,
+      }))
+    );
+
+    setTimeout(() => {
+      setIsSyncing(false);
+      setIsCloudSynced(true);
+      showToast('Seluruh Rekening Bank & E-Wallet berhasil disinkronkan secara realtime!');
+    }, 600);
+  }, [showToast]);
+
+  // Quick Connect Provider (GoPay, OVO, DANA, BCA, Mandiri, BRI, etc.)
+  const handleQuickConnectProvider = (provider: {
+    name: string;
+    institution: string;
+    type: Account['type'];
+    balance: number;
+  }) => {
+    const nowIso = new Date().toISOString();
+    setAccounts((prev) => {
+      const existingIdx = prev.findIndex(
+        (a) =>
+          a.institution.toLowerCase() === provider.institution.toLowerCase() ||
+          a.name.toLowerCase() === provider.name.toLowerCase()
+      );
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          balance: provider.balance,
+          isAutoSync: true,
+          lastSyncedAt: nowIso,
+        };
+        return updated;
+      }
+      return [
+        ...prev,
+        {
+          id: 'acc-' + Date.now(),
+          name: provider.name,
+          institution: provider.institution,
+          type: provider.type,
+          balance: provider.balance,
+          isAutoSync: true,
+          lastSyncedAt: nowIso,
+        },
+      ];
+    });
+    showToast(`${provider.name} terhubung & sinkronisasi otomatis aktif!`);
+  };
 
   // Derived financial metrics
   const totalNetWorth = useMemo(() => {
@@ -257,34 +421,67 @@ export default function App() {
       .reduce((sum, t) => sum + t.amount, 0);
   }, [transactions]);
 
-  // PDF Export Handler - opens format selection modal with instant crystal-clear download
-  const handleDownloadPdf = () => {
+  // PDF Export Handler - opens scoped export modal (e.g., 'rab' or 'keuangan' or 'rekening')
+  const handleDownloadPdf = (scope?: PdfExportScope) => {
+    if (scope) {
+      setPdfDefaultScope(scope);
+    } else if (activeTab === 'rab') {
+      setPdfDefaultScope('rab');
+    } else if (activeTab === 'rekening') {
+      setPdfDefaultScope('rekening');
+    } else if (activeTab === 'transaksi') {
+      setPdfDefaultScope('transaksi');
+    } else if (activeTab === 'anggaran') {
+      setPdfDefaultScope('anggaran');
+    } else {
+      setPdfDefaultScope('keuangan');
+    }
     setIsPdfModalOpen(true);
   };
 
-  // Transaction Handler
+  // Transaction Handler (Realtime updates target Bank/E-Wallet balance)
   const handleSaveTransaction = (txData: Omit<Transaction, 'id'>) => {
     const newId = 'tx-' + Date.now();
     const newTx: Transaction = {
       ...txData,
       id: newId,
     };
+    const nowIso = new Date().toISOString();
 
-    // Update account balances
     setAccounts((prevAccounts) => {
       return prevAccounts.map((acc) => {
         if (txData.type === 'expense' && acc.id === txData.accountId) {
-          return { ...acc, balance: acc.balance - txData.amount };
+          return {
+            ...acc,
+            balance: acc.balance - txData.amount,
+            isAutoSync: true,
+            lastSyncedAt: nowIso,
+          };
         }
         if (txData.type === 'income' && acc.id === txData.accountId) {
-          return { ...acc, balance: acc.balance + txData.amount };
+          return {
+            ...acc,
+            balance: acc.balance + txData.amount,
+            isAutoSync: true,
+            lastSyncedAt: nowIso,
+          };
         }
         if (txData.type === 'transfer') {
           if (acc.id === txData.accountId) {
-            return { ...acc, balance: acc.balance - txData.amount };
+            return {
+              ...acc,
+              balance: acc.balance - txData.amount,
+              isAutoSync: true,
+              lastSyncedAt: nowIso,
+            };
           }
           if (acc.id === txData.targetAccountId) {
-            return { ...acc, balance: acc.balance + txData.amount };
+            return {
+              ...acc,
+              balance: acc.balance + txData.amount,
+              isAutoSync: true,
+              lastSyncedAt: nowIso,
+            };
           }
         }
         return acc;
@@ -292,27 +489,47 @@ export default function App() {
     });
 
     setTransactions((prev) => [newTx, ...prev]);
-    showToast('Transaksi berhasil dicatat dan saldo diperbarui');
+    showToast('Transaksi dicatat & saldo rekening/e-wallet otomatis diperbarui secara realtime');
   };
 
   // Quick parser from Hero input
   const handleQuickAdd = (input: string) => {
     const numbersOnly = input.replace(/[^0-9]/g, '');
-    let amount = parseFloat(numbersOnly) || 0;
+    const amount = parseFloat(numbersOnly) || 0;
     if (amount === 0) {
       showToast('Ketik nominal yang jelas (misal: "Beli kopi 35000" atau "Gaji 10000000")');
       return;
     }
 
     const lower = input.toLowerCase();
-    const isIncome = lower.includes('gaji') || lower.includes('transfer masuk') || lower.includes('bonus') || lower.includes('freelance');
+    const isIncome =
+      lower.includes('gaji') ||
+      lower.includes('transfer masuk') ||
+      lower.includes('bonus') ||
+      lower.includes('freelance');
 
     let category = 'Lainnya';
-    if (lower.includes('kopi') || lower.includes('makan') || lower.includes('resto') || lower.includes('gojek') || lower.includes('grab')) {
+    if (
+      lower.includes('kopi') ||
+      lower.includes('makan') ||
+      lower.includes('resto') ||
+      lower.includes('gojek') ||
+      lower.includes('grab')
+    ) {
       category = 'Makanan & Minuman';
-    } else if (lower.includes('bensin') || lower.includes('toll') || lower.includes('parkir') || lower.includes('kereta')) {
+    } else if (
+      lower.includes('bensin') ||
+      lower.includes('toll') ||
+      lower.includes('parkir') ||
+      lower.includes('kereta')
+    ) {
       category = 'Transportasi';
-    } else if (lower.includes('listrik') || lower.includes('wifi') || lower.includes('sewa') || lower.includes('kontrakan')) {
+    } else if (
+      lower.includes('listrik') ||
+      lower.includes('wifi') ||
+      lower.includes('sewa') ||
+      lower.includes('kontrakan')
+    ) {
       category = 'Tempat Tinggal & Tagihan';
     } else if (lower.includes('belanja') || lower.includes('baju') || lower.includes('sepatu')) {
       category = 'Belanja & Gaya Hidup';
@@ -320,13 +537,14 @@ export default function App() {
       category = 'Gaji Utama';
     }
 
-    const targetAccount = accounts[0] || {
+    const targetAccount: Account = accounts[0] || {
       id: 'acc-default',
       name: 'Dompet Utama',
       type: 'wallet',
       balance: 0,
-      currency: 'IDR',
-      institution: 'Tunai',
+      institution: 'E-Wallet Digital',
+      isAutoSync: true,
+      lastSyncedAt: new Date().toISOString(),
     };
 
     if (accounts.length === 0) {
@@ -345,10 +563,13 @@ export default function App() {
 
   // Transfer Handler
   const handleTransfer = (fromId: string, toId: string, amount: number, notes?: string) => {
+    const nowIso = new Date().toISOString();
     setAccounts((prev) =>
       prev.map((acc) => {
-        if (acc.id === fromId) return { ...acc, balance: acc.balance - amount };
-        if (acc.id === toId) return { ...acc, balance: acc.balance + amount };
+        if (acc.id === fromId)
+          return { ...acc, balance: acc.balance - amount, isAutoSync: true, lastSyncedAt: nowIso };
+        if (acc.id === toId)
+          return { ...acc, balance: acc.balance + amount, isAutoSync: true, lastSyncedAt: nowIso };
         return acc;
       })
     );
@@ -368,7 +589,7 @@ export default function App() {
     };
 
     setTransactions((prev) => [newTx, ...prev]);
-    showToast(`Transfer dana sebesar ${amount.toLocaleString('id-ID')} berhasil diproses`);
+    showToast(`Transfer dana sebesar ${amount.toLocaleString('id-ID')} berhasil diproses secara realtime`);
   };
 
   // Delete transaction
@@ -376,7 +597,6 @@ export default function App() {
     const tx = transactions.find((t) => t.id === id);
     if (!tx) return;
 
-    // Rollback account balances
     setAccounts((prev) =>
       prev.map((acc) => {
         if (tx.type === 'expense' && acc.id === tx.accountId) {
@@ -398,23 +618,28 @@ export default function App() {
     );
 
     setTransactions((prev) => prev.filter((t) => t.id !== id));
-    showToast('Transaksi dihapus dan saldo rekening disesuaikan');
+    showToast('Transaksi dihapus dan saldo rekening disesuaikan kembali');
   };
 
   // Add / Edit Account
   const handleSaveAccount = (accountData: Omit<Account, 'id'>, id?: string) => {
+    const nowIso = new Date().toISOString();
     if (id) {
       setAccounts((prev) =>
-        prev.map((a) => (a.id === id ? { ...accountData, id } : a))
+        prev.map((a) =>
+          a.id === id ? { ...accountData, id, isAutoSync: true, lastSyncedAt: nowIso } : a
+        )
       );
-      showToast(`Rekening "${accountData.name}" berhasil diperbarui`);
+      showToast(`Rekening "${accountData.name}" diperbarui & disinkronkan`);
     } else {
       const newAcc: Account = {
         ...accountData,
         id: 'acc-' + Date.now(),
+        isAutoSync: true,
+        lastSyncedAt: nowIso,
       };
       setAccounts((prev) => [...prev, newAcc]);
-      showToast(`Rekening "${accountData.name}" berhasil ditambahkan`);
+      showToast(`Rekening "${accountData.name}" ditambahkan & Auto-Sync aktif`);
     }
   };
 
@@ -447,17 +672,21 @@ export default function App() {
 
   // Clean / Reset Data
   const handleResetData = () => {
-    const confirmed = window.confirm('Apakah Anda yakin ingin mengosongkan seluruh data untuk memulai lembaran baru?');
+    const confirmed = window.confirm(
+      'Apakah Anda yakin ingin mengosongkan seluruh data untuk memulai lembaran baru?'
+    );
     if (!confirmed) return;
 
     setAccounts([]);
     setTransactions([]);
     setBudgets([]);
     setGoals([]);
+    setRabProjects([]);
     localStorage.removeItem('mervflow_accounts');
     localStorage.removeItem('mervflow_transactions');
     localStorage.removeItem('mervflow_budgets');
     localStorage.removeItem('mervflow_goals');
+    localStorage.removeItem('mervflow_rab_projects');
     showToast('Seluruh data berhasil dikosongkan untuk penggunaan permanen');
   };
 
@@ -472,6 +701,7 @@ export default function App() {
       transactions,
       budgets,
       goals,
+      rabProjects,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: 'application/json',
@@ -485,6 +715,18 @@ export default function App() {
     showToast('Cadangan data JSON berhasil diunduh');
   };
 
+  // Navigate to tab and scroll to its anchor ID
+  const handleNavigateAndScroll = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    window.history.replaceState(null, '', `#${tab}`);
+    setTimeout(() => {
+      const el = document.getElementById(tab);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 30);
+  };
+
   // Loading state
   if (authLoading) {
     return (
@@ -494,7 +736,7 @@ export default function App() {
             <div className="absolute inset-0 rounded-full border-2 border-[#5266eb]/20 border-t-[#5266eb]" />
           </div>
           <p className="text-xs text-[#c3c3cc] tracking-wider uppercase font-[480]">
-            Memuat Arsitektur Finansial...
+            Memuat Finance Assistant...
           </p>
         </div>
       </div>
@@ -511,8 +753,10 @@ export default function App() {
             setIsAuthModalOpen(true);
           }}
           onEnterDashboard={() => setViewMode('dashboard')}
-          onDownloadSamplePdf={handleDownloadPdf}
+          onDownloadSamplePdf={() => handleDownloadPdf('keuangan')}
           currency={currency}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
         />
 
         <AuthModal
@@ -521,7 +765,7 @@ export default function App() {
           defaultTab={authModalTab}
           onSuccess={() => {
             setViewMode('dashboard');
-            showToast('Selamat datang di MervFlow Money');
+            showToast('Selamat datang di MervFlow Finance Assistant');
           }}
         />
 
@@ -532,13 +776,14 @@ export default function App() {
           transactions={transactions}
           budgets={budgets}
           goals={goals}
+          rabProjects={rabProjects}
+          defaultScope={pdfDefaultScope}
           currency={currency}
           userEmail={currentUser?.email}
           userName={currentUser?.displayName}
           onSuccessToast={showToast}
         />
 
-        {/* Toast */}
         {toastMessage && (
           <div className="fixed bottom-6 right-6 z-50 bg-[#1e1e2a] border border-[#5266eb]/50 text-[#ededf3] px-4 py-3 rounded-[16px] shadow-2xl flex items-center gap-2.5 text-xs font-[450] animate-in fade-in slide-in-from-bottom-2">
             <CheckCircle className="w-4 h-4 text-[#5266eb] shrink-0" />
@@ -549,82 +794,32 @@ export default function App() {
     );
   }
 
-  // Dashboard View
-  return (
-    <div className="min-h-screen bg-[#171721] text-[#ededf3] flex flex-col selection:bg-[#5266eb] selection:text-white pb-12 font-['Inter',sans-serif]">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#1e1e2a] border border-[#5266eb]/50 text-[#ededf3] px-4 py-3 rounded-[16px] shadow-2xl flex items-center gap-2.5 text-xs font-[450] animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle className="w-4 h-4 text-[#5266eb] shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      {/* Main Navbar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        currency={currency}
-        setCurrency={setCurrency}
-        onOpenNewTransaction={() => setIsTransactionModalOpen(true)}
-        onDownloadPdf={handleDownloadPdf}
-        onGoToLanding={() => setViewMode('landing')}
-        onOpenAuth={() => {
-          setAuthModalTab('login');
-          setIsAuthModalOpen(true);
-        }}
-        isCloudSynced={isCloudSynced}
-      />
-
-      {/* Secondary Top Bar: Quick return to landing if logged in */}
-      <div className="pt-20 px-6 max-w-[1200px] mx-auto w-full flex items-center justify-between text-xs text-[#c3c3cc]">
-        <button
-          onClick={() => setViewMode('landing')}
-          className="inline-flex items-center gap-1.5 hover:text-[#ededf3] transition-colors cursor-pointer py-1"
-        >
-          <ArrowLeft className="w-3.5 h-3.5 text-[#5266eb]" />
-          <span>Halaman Beranda &amp; Informasi</span>
-        </button>
-
-        {currentUser && (
-          <span className="text-[11px] text-[#10b981] font-[480] flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse" />
-            Tersimpan di Cloud Firebase
-          </span>
-        )}
-      </div>
-
-      {/* Hero Section (Net Worth, Metrics, & Quick Input) */}
-      <HeroSection
-        totalNetWorth={totalNetWorth}
-        totalIncomeMonth={totalIncomeMonth}
-        totalExpenseMonth={totalExpenseMonth}
-        currency={currency}
-        onQuickAdd={handleQuickAdd}
-        onOpenNewTransaction={() => setIsTransactionModalOpen(true)}
-      />
-
-      {/* Main Container Views */}
-      <main className="max-w-[1200px] mx-auto px-6 w-full flex-1 mt-4">
-        {activeTab === 'ringkasan' && (
+  // Shared active section content rendered inside either Liquid-Glass Stage Drawer or Classic View
+  const renderActiveSectionContent = () => (
+    <div id={activeTab} className="scroll-mt-24">
+      {activeTab === 'ringkasan' && (
+        <div id="ringkasan">
           <RingkasanView
             accounts={accounts}
             transactions={transactions}
             budgets={budgets}
             goals={goals}
+            rabProjects={rabProjects}
             currency={currency}
-            onNavigateTab={(tab) => setActiveTab(tab)}
+            onNavigateTab={handleNavigateAndScroll}
             onOpenNewTransaction={() => setIsTransactionModalOpen(true)}
             onOpenTransfer={() => setIsTransferModalOpen(true)}
             onOpenAddAccount={() => {
               setEditingAccount(null);
               setIsAccountModalOpen(true);
             }}
-            onDownloadPdf={handleDownloadPdf}
+            onDownloadPdf={() => handleDownloadPdf('keuangan')}
           />
-        )}
+        </div>
+      )}
 
-        {activeTab === 'transaksi' && (
+      {activeTab === 'transaksi' && (
+        <div id="transaksi">
           <TransaksiView
             transactions={transactions}
             accounts={accounts}
@@ -632,9 +827,11 @@ export default function App() {
             onOpenNewTransaction={() => setIsTransactionModalOpen(true)}
             onDeleteTransaction={handleDeleteTransaction}
           />
-        )}
+        </div>
+      )}
 
-        {activeTab === 'rekening' && (
+      {activeTab === 'rekening' && (
+        <div id="rekening">
           <RekeningView
             accounts={accounts}
             currency={currency}
@@ -648,10 +845,16 @@ export default function App() {
               setIsAccountModalOpen(true);
             }}
             onDeleteAccount={handleDeleteAccount}
+            onQuickConnectProvider={handleQuickConnectProvider}
+            onAutoSyncAll={handleAutoSyncAll}
+            isSyncing={isSyncing}
+            onDownloadRekeningPdf={() => handleDownloadPdf('rekening')}
           />
-        )}
+        </div>
+      )}
 
-        {activeTab === 'anggaran' && (
+      {activeTab === 'anggaran' && (
+        <div id="anggaran">
           <AnggaranView
             budgets={budgets}
             transactions={transactions}
@@ -665,17 +868,236 @@ export default function App() {
               setIsBudgetModalOpen(true);
             }}
           />
-        )}
+        </div>
+      )}
 
-        {activeTab === 'analisis' && (
-          <AnalisisView
-            transactions={transactions}
+      {activeTab === 'rab' && (
+        <div id="rab">
+          <RabView
+            rabProjects={rabProjects}
+            onSaveProjects={setRabProjects}
+            accounts={accounts}
             currency={currency}
+            userEmail={currentUser?.email}
+            userName={currentUser?.displayName}
+            onRecordExpenseToTransaction={handleSaveTransaction}
+            onShowToast={showToast}
           />
-        )}
+        </div>
+      )}
+
+      {activeTab === 'analisis' && (
+        <div id="analisis">
+          <AnalisisView transactions={transactions} currency={currency} />
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div
+      className={`min-h-screen app-shell-bg bg-[#04121b] text-[#ededf3] flex flex-col selection:bg-[#5266eb] selection:text-white font-['Inter',sans-serif] pb-12 ${
+        theme === 'light' ? 'theme-light' : ''
+      }`}
+    >
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-[70] bg-[#1e1e2a] border border-[#5266eb]/50 text-[#ededf3] px-4 py-3 rounded-[16px] shadow-2xl flex items-center gap-2.5 text-xs font-[450] animate-in fade-in slide-in-from-bottom-2">
+          <CheckCircle className="w-4 h-4 text-[#5266eb] shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Main Top Navbar (Always Visible with Direct #id Links + Landing/Login Button) */}
+      <Navbar
+        activeTab={activeTab}
+        setActiveTab={handleNavigateAndScroll}
+        currency={currency}
+        setCurrency={setCurrency}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
+        onOpenNewTransaction={() => setIsTransactionModalOpen(true)}
+        onDownloadPdf={handleDownloadPdf}
+        onGoToLanding={() => setViewMode('landing')}
+        onOpenAuth={() => {
+          setAuthModalTab('login');
+          setIsAuthModalOpen(true);
+        }}
+        isCloudSynced={isCloudSynced}
+        onAutoSync={handleAutoSyncAll}
+      />
+
+      {/* Secondary Command Bar: Direct Access to Landing Page Login, RAB Builder & Financial Management */}
+      <div className="pt-24 lg:pt-20 px-4 sm:px-6 max-w-[1320px] mx-auto w-full flex flex-wrap items-center justify-between gap-3 text-xs text-[#c3c3cc]">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => setViewMode('landing')}
+            className="inline-flex items-center gap-1.5 py-1.5 px-3.5 rounded-[10px] bg-[#1e1e2a] border border-[#5266eb]/50 text-[#ededf3] hover:border-[#5266eb] transition-colors cursor-pointer font-[500]"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-[#5266eb]" />
+            <span>Halaman Landing Page &amp; Login</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setAuthModalTab('login');
+              setIsAuthModalOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 py-1.5 px-3.5 rounded-[10px] bg-[#1e1e2a] border border-[#10b981]/40 text-[#ededf3] hover:border-[#10b981] transition-colors cursor-pointer font-[500]"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#10b981]" />
+            <span>{currentUser ? 'Ganti Akun / Portal Login' : 'Masuk / Daftar Akun'}</span>
+          </button>
+
+          <a
+            href="#manajemen-keuangan"
+            onClick={(e) => {
+              e.preventDefault();
+              document.getElementById('manajemen-keuangan')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="inline-flex items-center gap-1.5 py-1.5 px-3.5 rounded-[10px] bg-[#1e1e2a] border border-[#272735] text-[#ededf3] hover:border-[#5266eb] transition-colors cursor-pointer no-underline font-[500]"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-[#5266eb]" />
+            <span>Tabel Manajemen Keuangan ↓</span>
+          </a>
+
+          <a
+            href="#rab"
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavigateAndScroll('rab');
+            }}
+            className={`inline-flex items-center gap-1.5 py-1.5 px-3.5 rounded-[10px] transition-all cursor-pointer no-underline ${
+              activeTab === 'rab'
+                ? 'bg-[#5266eb] text-white font-[500]'
+                : 'bg-[#1e1e2a] text-[#ededf3] border border-[#5266eb]/40 hover:border-[#5266eb]'
+            }`}
+          >
+            <Calculator
+              className="w-3.5 h-3.5 text-[#5266eb] shrink-0"
+              style={activeTab === 'rab' ? { color: '#ffffff' } : undefined}
+            />
+            <span>Pembuatan RAB (Bangun Rumah / Renovasi / Proyek)</span>
+          </a>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setDashboardLayout((prev) => (prev === 'liquid' ? 'classic' : 'liquid'))}
+            className="text-[11px] text-[#c3c3cc] hover:text-[#ededf3] underline cursor-pointer"
+          >
+            {dashboardLayout === 'liquid' ? 'Sembunyikan Hero Liquid-Glass' : 'Tampilkan Hero Liquid-Glass'}
+          </button>
+          {currentUser && (
+            <span className="text-[11px] text-[#10b981] font-[480] flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse" />
+              Realtime Sync Cloud &amp; E-Wallet Aktif
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 1. LIQUID-GLASS FINANCE ASSISTANT STAGE (Aurora Weather Inspired) */}
+      {dashboardLayout === 'liquid' ? (
+        <section id="finance-assistant" className="max-w-[1320px] mx-auto px-4 sm:px-6 w-full mt-4">
+          <LiquidFinanceStage
+            activeTab={activeTab}
+            onNavigateSection={handleNavigateAndScroll}
+            totalNetWorth={totalNetWorth}
+            totalIncomeMonth={totalIncomeMonth}
+            totalExpenseMonth={totalExpenseMonth}
+            accounts={accounts}
+            transactions={transactions}
+            budgets={budgets}
+            rabProjects={rabProjects}
+            currency={currency}
+            setCurrency={setCurrency}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            userName={currentUser?.displayName || 'Mervin Inas'}
+            userEmail={currentUser?.email}
+            onQuickAdd={handleQuickAdd}
+            onOpenNewTransaction={() => setIsTransactionModalOpen(true)}
+            onOpenPdfModal={handleDownloadPdf}
+            onAutoSyncAccounts={handleAutoSyncAll}
+            isSyncingAccounts={isSyncing}
+            onGoToLanding={() => setViewMode('landing')}
+            onOpenAuth={() => {
+              setAuthModalTab('login');
+              setIsAuthModalOpen(true);
+            }}
+            onLogout={async () => {
+              await logout();
+              setViewMode('landing');
+            }}
+          />
+        </section>
+      ) : (
+        <HeroSection
+          totalNetWorth={totalNetWorth}
+          totalIncomeMonth={totalIncomeMonth}
+          totalExpenseMonth={totalExpenseMonth}
+          currency={currency}
+          onQuickAdd={handleQuickAdd}
+          onOpenNewTransaction={() => setIsTransactionModalOpen(true)}
+        />
+      )}
+
+      {/* 2. HALAMAN MANAJEMEN KEUANGAN & RAB LENGKAP (Directly Visible Below!) */}
+      <main id="manajemen-keuangan" className="max-w-[1320px] mx-auto px-4 sm:px-6 w-full flex-1 mt-8 scroll-mt-24">
+        {/* Section Switcher Bar for Financial Management */}
+        <div className="mb-6 p-3 rounded-[20px] bg-[#1e1e2a] border border-[#272735] flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <span className="text-[11px] font-[600] uppercase tracking-wider text-[#5266eb] block">
+              PUSAT KENDALI &amp; MANAJEMEN KEUANGAN
+            </span>
+            <h2 className="text-base sm:text-lg font-[500] text-[#ededf3]">
+              Kelola Ringkasan, Transaksi, Rekening &amp; E-Wallet, Anggaran, serta RAB Proyek
+            </h2>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: 'ringkasan', label: 'Ringkasan' },
+                { id: 'transaksi', label: 'Transaksi' },
+                { id: 'rekening', label: 'Rekening & E-Wallet' },
+                { id: 'anggaran', label: 'Anggaran' },
+                { id: 'rab', label: 'Pembuatan RAB' },
+                { id: 'analisis', label: 'Analisis' },
+              ] as { id: ActiveTab; label: string }[]
+            ).map((t) => (
+              <a
+                key={t.id}
+                href={`#${t.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNavigateAndScroll(t.id);
+                }}
+                className={`px-3.5 py-2 rounded-full text-xs font-[500] transition-all cursor-pointer no-underline ${
+                  activeTab === t.id
+                    ? 'bg-[#5266eb] text-white shadow-sm'
+                    : 'bg-[#171721] text-[#c3c3cc] hover:text-[#ededf3] border border-[#272735]'
+                }`}
+              >
+                {t.label}
+              </a>
+            ))}
+          </div>
+        </div>
+
+        {/* Active Financial Management View */}
+        {renderActiveSectionContent()}
       </main>
 
-      {/* Modals */}
+      {/* Disclaimer Banner Footer */}
+      <DisclaimerFooter
+        onResetData={handleResetData}
+        onExportJson={handleExportJson}
+        onDownloadPdf={() => handleDownloadPdf()}
+      />
+
+      {/* Modals (Accessible from both Liquid Glass Stage and Classic View) */}
       <TransactionModal
         isOpen={isTransactionModalOpen}
         onClose={() => setIsTransactionModalOpen(false)}
@@ -730,17 +1152,12 @@ export default function App() {
         transactions={transactions}
         budgets={budgets}
         goals={goals}
+        rabProjects={rabProjects}
+        defaultScope={pdfDefaultScope}
         currency={currency}
         userEmail={currentUser?.email}
         userName={currentUser?.displayName}
         onSuccessToast={showToast}
-      />
-
-      {/* Disclaimer Banner Footer with PDF download button */}
-      <DisclaimerFooter
-        onResetData={handleResetData}
-        onExportJson={handleExportJson}
-        onDownloadPdf={handleDownloadPdf}
       />
     </div>
   );

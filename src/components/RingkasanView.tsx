@@ -1,15 +1,16 @@
 import React from 'react';
-import { Account, Budget, Currency, SavingsGoal, Transaction } from '../types';
+import { Account, Budget, Currency, RabProject, SavingsGoal, Transaction } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { ArrowUpRight, ArrowDownRight, ArrowRight, ShieldCheck, Target, Layers, FileDown, Plus, Landmark } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, ArrowRight, ShieldCheck, Target, Layers, FileDown, Plus, Landmark, Calculator } from 'lucide-react';
 
 interface RingkasanViewProps {
   accounts: Account[];
   transactions: Transaction[];
   budgets: Budget[];
   goals: SavingsGoal[];
+  rabProjects?: RabProject[];
   currency: Currency;
-  onNavigateTab: (tab: 'transaksi' | 'rekening' | 'anggaran' | 'analisis') => void;
+  onNavigateTab: (tab: 'transaksi' | 'rekening' | 'anggaran' | 'rab' | 'analisis') => void;
   onOpenNewTransaction: () => void;
   onOpenTransfer: () => void;
   onOpenAddAccount?: () => void;
@@ -21,6 +22,7 @@ export const RingkasanView: React.FC<RingkasanViewProps> = ({
   transactions,
   budgets,
   goals,
+  rabProjects = [],
   currency,
   onNavigateTab,
   onOpenNewTransaction,
@@ -62,16 +64,27 @@ export const RingkasanView: React.FC<RingkasanViewProps> = ({
           </h2>
         </div>
 
-        {onDownloadPdf && (
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
-            onClick={onDownloadPdf}
-            className="pill-button-secondary text-xs py-2 px-4 flex items-center gap-2 border border-[#272735] hover:border-[#5266eb]/50"
-            title="Download Laporan Format PDF"
+            onClick={() => onNavigateTab('rab')}
+            className="pill-button-primary text-xs py-2 px-4 flex items-center gap-2 cursor-pointer"
+            title="Buka Halaman Pembuatan RAB (Bangun Rumah, Renovasi, Proyek, Usaha)"
           >
-            <FileDown className="w-4 h-4 text-[#5266eb]" />
-            <span>Unduh Laporan PDF</span>
+            <Calculator className="w-4 h-4" />
+            <span>Pembuatan RAB ({rabProjects.length})</span>
           </button>
-        )}
+
+          {onDownloadPdf && (
+            <button
+              onClick={onDownloadPdf}
+              className="pill-button-secondary text-xs py-2 px-4 flex items-center gap-2 border border-[#272735] hover:border-[#5266eb]/50"
+              title="Download Laporan Format PDF"
+            >
+              <FileDown className="w-4 h-4 text-[#5266eb]" />
+              <span>Unduh Laporan PDF</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Empty State Banner if user has no accounts yet */}
